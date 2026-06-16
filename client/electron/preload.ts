@@ -8,8 +8,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   minimize: () => ipcRenderer.send('window-minimize'),
   pin: () => ipcRenderer.invoke('window-pin'), // Change maximize to pin
   close: () => ipcRenderer.send('window-close'),
-  onTaskUpdate: (callback: (data: any) => void) => ipcRenderer.on('task-update', (_event, value) => callback(value)),
-  onOverlaySelected: (callback: (rect: any) => void) => ipcRenderer.on('overlay-selected', (_event, value) => callback(value)),
+  onTaskUpdate: (callback: (data: any) => void) => {
+    const subscription = (_event: any, value: any) => callback(value);
+    ipcRenderer.on('task-update', subscription);
+    return () => ipcRenderer.removeListener('task-update', subscription);
+  },
+  onOverlaySelected: (callback: (rect: any) => void) => {
+    const subscription = (_event: any, value: any) => callback(value);
+    ipcRenderer.on('overlay-selected', subscription);
+    return () => ipcRenderer.removeListener('overlay-selected', subscription);
+  },
   sendSelectedRect: (rect: any) => ipcRenderer.send('overlay-rect-selected', rect),
   captureRect: (rect: any) => ipcRenderer.invoke('capture-rect', rect),
 });

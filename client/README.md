@@ -1,73 +1,77 @@
-# React + TypeScript + Vite
+# AutoButton 辅助工具前端面板说明文档 (README)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+欢迎使用 **AutoButton** 自动按键辅助工具。本项目的核心目标是打造一个极简、免安装、支持多语言的一键无缝切换、具备本地存储持久化和纯本地 OCR 触发机制的绿色便捷辅助工具。
 
-Currently, two official plugins are available:
+本说明文档将重点阐述**中英文切换多语言国际化机制**的设计与实现，以便您进行二次开发与功能集成。
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+---
 
-## React Compiler
+## 一、 中英文切换多语言国际化 (i18n) 架构
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+程序采用了纯静态、响应式、零初始延迟且具备本地状态持久化的多语言国际化引擎：
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```mermaid
+graph TD
+    A[用户点击 i18n 胶囊 Tab] --> B(handleLangChange 联动互译处理)
+    B --> C{规则名是否被手动修改?}
+    C -- 否 --> D[联动互译内置模板与规则名]
+    C -- 是 --> E[保留用户自定义名称]
+    B --> F[更新 currentLang 状态并写入 localStorage]
+    F --> G[React 全站组件零刷新重绘]
+    G --> H[闭包 t() 工具解析对应语言包静态字串]
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### 1. 静态翻译对照机制
+所有的界面静态文案均完全与业务逻辑解耦，分别保存在两个物理语言配置文件中，且禁止在包内编写任何带占位符的动态拼接，保证包的纯净度：
+* **中文语言包**：[zh.json](file:///c:/antigravity/AutoButton/client/src/locales/zh.json)
+* **英文语言包**：[en.json](file:///c:/antigravity/AutoButton/client/src/locales/en.json)
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### 2. 闭包翻译工具 `t()`
+在 [App.tsx](file:///c:/antigravity/AutoButton/client/src/App.tsx) 顶部，基于当前的 `currentLang` 状态封装了轻量级的局部闭包翻译引擎 `t(key)`。当用户切换语言状态时，触发组件的局部重绘，所有静态字串在零刷新的情况下瞬间被热重构为对应的语言文案。
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### 3. 样例模板与默认规则智能联动翻译
+为了提供顶级的交互体验，系统实现了对规则名称的智能联动转译：
+* **智能检测**：在 `handleLangChange` 切换语言时，系统会正则扫描当前所有规则名称。
+* **联动转译**：如果规则名称尚未被用户手动修改过（例如保持着系统默认的 `"百分比触发样例"`、`"固定间隔触发样例"` 或 `"新增规则 1"` 等模板名），系统在切换语言时会**自动将其翻译为目标语言对应的名字**（如 `"Percentage Trigger Example"` / `"New Rule 1"`）。
+* **保留自定义**：如果用户已经编辑并自定义了规则名，则在切换语言时会予以安全保留，不做强行覆盖。
+
+### 4. 语言切换器 UI 交互布局
+为了兼顾美学设计并避开 Windows 无边框拖拽区的点击冲突，多语言切换器被设计在以下两个关键操作点上：
+* **登录验证界面**：将 `中 / EN` 胶囊切换 Tab 置于登录验证卡片内部底端，并指定了 `no-drag` 以防止被外层容器的拖拽手势吞噬，同时完美避开了右上角独立关闭按钮的布局干涉。
+* **主操作面板**：在全局总控开关卡片右侧的“目标窗口选择”按钮旁，融入了一个高度贴合玻璃微拟态风格的胶囊状 `中 / EN` 切换 Tab，实现高亮状态跟随。
+
+### 5. localStorage 状态持久化
+用户的语言选择会被自动序列化并物理记录在浏览器的 `localStorage` 中。下一次冷启动该辅助工具时，程序会自动读取并加载该语言习惯，无任何跳闪感。
+
+---
+
+## 二、 规则持久化与总控安全防错
+
+除了静态文案外，按键规则配置也引入了全面的持久化逻辑：
+* **规则自动保存**：用户对任务列表（包括识图范围、触发阈值、按键配置以及开启状态等）所作的任何修改，都会自动同步存储。重新打开程序时，会自动恢复您上次离线时的全部任务规则状态。
+* **总控安全阻断**：考虑到运行安全性，每次重新打开程序时，全局总控总开关强制重置为**关闭状态（`false`）**，不作本地状态记忆。用户必须手动点击开启后才会轮询检测，防止后台静默运行带来不可控的键盘模拟冲突。
+
+---
+
+## 三、 本地编译、打包与运行
+
+### 1. 依赖安装
+由于底层的键盘模拟 Native add-on (`robotjs`) 涉及 C++ 重建，建议在 Node.js 环境下运行：
+```bash
+npm install
 ```
+
+### 2. 启动本地开发调试
+```bash
+npm run dev
+```
+
+### 3. 构建优化版绿色免安装分发包
+运行打包脚本后，`electron-builder` 会自动针对 dependencies 进行极简化打包，仅将 `robotjs` Native 动态链接库和 `tesseract.js` worker 脚本物理拆包（仅 2 个文件解包），使 Portable 版本启动速度达到秒开极限：
+```bash
+npm run dist
+```
+打包产物输出在 `dist-package/` 目录中：
+* **`AutoButton 0.0.0.exe`**：绿色单文件便携版（免安装，双击秒开）。
+* **`AutoButton-0.0.0-win.zip`** : 解压即用压缩包。
+* **诊断日志**：程序运行后，如果需要排查，可直接进入系统 `%APPDATA%\client\diagnostic.log` 查看主进程和 OCR 的后台自检诊断日志。

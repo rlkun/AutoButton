@@ -11,8 +11,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getWindowList: () => ipcRenderer.invoke('get-window-list'),
   hoverWindow: (rect) => ipcRenderer.send('window-hover', rect), // Send rect coordinates directly
   hoverWindowExit: () => ipcRenderer.send('window-hover-exit'), // Send hover exit
-  onTaskUpdate: (callback) => ipcRenderer.on('task-update', (_event, value) => callback(value)),
-  onOverlaySelected: (callback) => ipcRenderer.on('overlay-selected', (_event, value) => callback(value)),
+  onTaskUpdate: (callback) => {
+    const subscription = (_event, value) => callback(value);
+    ipcRenderer.on('task-update', subscription);
+    return () => ipcRenderer.removeListener('task-update', subscription);
+  },
+  onOverlaySelected: (callback) => {
+    const subscription = (_event, value) => callback(value);
+    ipcRenderer.on('overlay-selected', subscription);
+    return () => ipcRenderer.removeListener('overlay-selected', subscription);
+  },
   sendSelectedRect: (rect) => ipcRenderer.send('overlay-rect-selected', rect),
   captureRect: (rect) => ipcRenderer.invoke('capture-rect', rect),
 });

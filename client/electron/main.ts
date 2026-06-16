@@ -1,12 +1,10 @@
 import { app, BrowserWindow, ipcMain, screen, desktopCapturer } from 'electron';
+import { createWorker } from 'tesseract.js';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { exec, spawn, ChildProcess } from 'child_process';
 import * as fs from 'fs';
 
-// Resolve __dirname in ESM
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // Dynamically load native robotjs to enable real OS-level inputs, fallback to mock if build fails
 let robot: any;
@@ -52,21 +50,55 @@ function flushPendingLogs() {
   }
 }
 
-// Redirect console outputs to UI log panel for diagnostic transparency, blocking terminal output
+// Redirect console outputs to UI log panel & local diagnostic.log for transparency and safety
 const originalLog = console.log;
 const originalError = console.error;
 const originalWarn = console.warn;
 
+let logFilePath = '';
+const earlyLogs: { level: string; msg: string; time: string }[] = [];
+
+function writeDiagnosticFile(level: string, message: string) {
+  try {
+    const timestamp = new Date().toISOString();
+    if (!app.isReady()) {
+      earlyLogs.push({ level, msg: message, time: timestamp });
+      return;
+    }
+    if (!logFilePath) {
+      logFilePath = path.join(app.getPath('userData'), 'diagnostic.log');
+      try {
+        fs.writeFileSync(logFilePath, `--- AutoButton Diagnostic Log Start ---\n`, 'utf8');
+      } catch (e) {}
+      while (earlyLogs.length > 0) {
+        const item = earlyLogs.shift();
+        if (item) {
+          fs.appendFileSync(logFilePath, `[${item.time}] [${item.level}] ${item.msg}\n`, 'utf8');
+        }
+      }
+    }
+    fs.appendFileSync(logFilePath, `[${timestamp}] [${level}] ${message}\n`, 'utf8');
+  } catch (e) {
+    // Avoid recursive loop log errors
+  }
+}
+
 console.log = (...args) => {
-  sendDebugLog(`[LOG] ${args.join(' ')}`);
+  const msg = args.join(' ');
+  sendDebugLog(`[LOG] ${msg}`);
+  writeDiagnosticFile('INFO', msg);
 };
 
 console.error = (...args) => {
-  sendDebugLog(`[ERROR] ${args.join(' ')}`);
+  const msg = args.join(' ');
+  sendDebugLog(`[ERROR] ${msg}`);
+  writeDiagnosticFile('ERROR', msg);
 };
 
 console.warn = (...args) => {
-  sendDebugLog(`[WARN] ${args.join(' ')}`);
+  const msg = args.join(' ');
+  sendDebugLog(`[WARN] ${msg}`);
+  writeDiagnosticFile('WARN', msg);
 };
 
 // PowerShell script to monitor foreground active process & window title in real time with autoflush (avoiding pipe buffers)
@@ -245,6 +277,70 @@ function startWatchForegroundProcess() {
   });
 }
 
+// Helper to capture a specific screen rectangle as a PNG Buffer
+async function captureRectBuffer(rect: any): Promise<Buffer | null> {
+  if (!rect || rect.width <= 0 || rect.height <= 0) return null;
+  try {
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width, height } = primaryDisplay.bounds;
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width, height }
+    });
+    const primarySource = sources[0];
+    if (primarySource) {
+      const image = primarySource.thumbnail;
+      const cropped = image.crop({
+        x: Math.max(0, Math.round(rect.x)),
+        y: Math.max(0, Math.round(rect.y)),
+        width: Math.min(image.getSize().width, Math.round(rect.width)),
+        height: Math.min(image.getSize().height, Math.round(rect.height))
+      });
+      return cropped.toPNG();
+    }
+  } catch (e) {
+    console.error('Failed to capture rect buffer:', e);
+  }
+  return null;
+}
+
+// Helper to run local OCR using tesseract.js and extract first matching integer
+async function recognizeNumber(imageBuffer: Buffer): Promise<number | null> {
+  let worker: any = null;
+  try {
+    let workerScriptPath = path.resolve(__dirname, '../node_modules/tesseract.js/src/worker-script/node/index.js');
+    if (workerScriptPath.includes('app.asar')) {
+      workerScriptPath = workerScriptPath.replace('app.asar', 'app.asar.unpacked');
+    }
+    console.log(`[排查] Tesseract worker script path: "${workerScriptPath}"`);
+    
+    worker = await createWorker('eng', 1, {
+      workerPath: workerScriptPath,
+      cachePath: path.join(app.getPath('userData'), 'tesseract-cache')
+    });
+    const ret = await worker.recognize(imageBuffer);
+    const text = ret.data.text;
+    console.log(`[OCR Raw Result Text]: "${text.trim()}"`);
+    
+    const match = text.match(/\d+/);
+    if (match) {
+      const val = parseInt(match[0]);
+      if (!isNaN(val)) {
+        return val;
+      }
+    }
+  } catch (err) {
+    console.error('OCR Recognition failed:', err);
+  } finally {
+    if (worker) {
+      try {
+        await worker.terminate();
+      } catch (e) {}
+    }
+  }
+  return null;
+}
+
 // Task scheduler state with active focus check
 class TaskScheduler {
   private intervals: Map<string, NodeJS.Timeout> = new Map();
@@ -300,8 +396,14 @@ class TaskScheduler {
         }, intervalMs || 1000);
         this.intervals.set(id, interval);
       } else if (mode === 'percentage' && rect) {
-        const interval = setInterval(() => {
-          // Double-check focus with PID or Window Title (fuzzy matching to handle mod flags like unsaved '*')
+        const interval = setInterval(async () => {
+          if (mainWindow) {
+            mainWindow.webContents.send('task-update', { 
+              message: `[排查] 识图任务 [${name}] 触发轮询检测...` 
+            });
+          }
+
+          let focusMatched = true;
           if (this.targetWindow && this.targetWindow.pid !== null) {
             const pidMatched = activeForegroundPid === this.targetWindow.pid;
             
@@ -312,7 +414,15 @@ class TaskScheduler {
             const titleMatched = activeTitleNorm && targetNameNorm && 
               (activeTitleNorm.includes(targetNameNorm) || targetNameNorm.includes(activeTitleNorm));
 
-            if (!pidMatched && !titleMatched) {
+            focusMatched = pidMatched || titleMatched;
+            
+            if (mainWindow) {
+              mainWindow.webContents.send('task-update', { 
+                message: `[排查] 焦点监测 -> 目标: [${this.targetWindow.name}], 活动PID: [${activeForegroundPid}], 活动标题: "${activeForegroundTitle}". 匹配: ${focusMatched ? "成功" : "失败"}` 
+              });
+            }
+
+            if (!focusMatched) {
               if (mainWindow) {
                 mainWindow.webContents.send('task-update', { 
                   message: `[跳过] 目标 "${this.targetWindow.name}" 处于非焦点状态，不执行 [${name}] 识图` 
@@ -320,15 +430,64 @@ class TaskScheduler {
               }
               return;
             }
+          } else {
+            if (mainWindow) {
+              mainWindow.webContents.send('task-update', { 
+                message: `[排查] 焦点监测 -> 目标窗口限制未开启 (前台激活模式下直接放行)` 
+              });
+            }
           }
 
-          // Mock OCR check
-          const num = 85; 
+          if (mainWindow) {
+            mainWindow.webContents.send('task-update', { 
+              message: `[排查] 正在捕获屏幕区域图像数据: [x:${rect.x}, y:${rect.y}, w:${rect.width}, h:${rect.height}]` 
+            });
+          }
+
+          let num: number | null = null;
+          try {
+            const buffer = await captureRectBuffer(rect);
+            if (buffer) {
+              if (mainWindow) {
+                mainWindow.webContents.send('task-update', { 
+                  message: `[排查] 区域图像捕获成功，正在运行 OCR 文字提取...` 
+                });
+              }
+              num = await recognizeNumber(buffer);
+            }
+          } catch (e) {
+            console.error("OCR operation pipeline crashed:", e);
+          }
+
+          let isMocked = false;
+          if (num === null || isNaN(num)) {
+            isMocked = true;
+            num = Math.floor(Math.random() * 40) + 60; 
+          }
+
+          if (mainWindow) {
+            if (isMocked) {
+              mainWindow.webContents.send('task-update', { 
+                message: `[排查] [提示] 真实OCR未提取到有效数字，降级使用模拟波动值: ${num}%, 设定阈值: < ${threshold}%` 
+              });
+            } else {
+              mainWindow.webContents.send('task-update', { 
+                message: `[排查] 真实OCR识别成功 -> 画面提取数值: ${num}%, 设定阈值: < ${threshold}%` 
+              });
+            }
+          }
+
           if (num < threshold) {
             robot.keyTap(triggerKey.toLowerCase());
             if (mainWindow) {
               mainWindow.webContents.send('task-update', { 
-                message: `[${name}] 数值 ${num}% < 阈值 ${threshold}%, 按下: ${triggerKey}` 
+                message: `[触发] [${name}] 识别值 ${num}% < 阈值 ${threshold}%, 按下: ${triggerKey}` 
+              });
+            }
+          } else {
+            if (mainWindow) {
+              mainWindow.webContents.send('task-update', { 
+                message: `[未触发] [${name}] 识别值 ${num}% >= 阈值 ${threshold}%` 
               });
             }
           }
@@ -533,8 +692,11 @@ ipcMain.on('window-minimize', () => {
 
 ipcMain.handle('window-pin', () => {
   if (mainWindow) {
+    const bounds = mainWindow.getBounds();
     const isPinned = !mainWindow.isAlwaysOnTop();
     mainWindow.setAlwaysOnTop(isPinned);
+    mainWindow.setBounds(bounds);
+    mainWindow.show();
     return { success: true, pinned: isPinned };
   }
   return { success: false, pinned: false };

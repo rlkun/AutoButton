@@ -11,8 +11,15 @@ export default defineConfig({
         entry: 'electron/main.ts',
         vite: {
           build: {
+            lib: {
+              entry: 'electron/main.ts',
+              formats: ['cjs'],
+            },
             rollupOptions: {
               external: ['robotjs'],
+              output: {
+                entryFileNames: '[name].cjs',
+              },
             },
           },
         },

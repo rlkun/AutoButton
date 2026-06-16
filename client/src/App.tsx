@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Camera, Play, Square, Settings, Clock, Activity, LogIn, Plus, Trash2, X, Minus, Pin, Monitor, RotateCw } from 'lucide-react';
+import { Camera, LogIn, Plus, Trash2, X, Minus, Pin, Monitor, RotateCw } from 'lucide-react';
 import './index.css';
+import zh from './locales/zh.json';
+import en from './locales/en.json';
 
 interface TaskItem {
   id: string;
@@ -16,9 +18,56 @@ interface TaskItem {
 interface WindowItem {
   pid: number;
   title: string;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
 }
 
 function App() {
+  const [currentLang, setCurrentLang] = useState<'zh' | 'en'>(() => {
+    return (localStorage.getItem('lang') as 'zh' | 'en') || 'zh';
+  });
+
+  const handleLangChange = (lang: 'zh' | 'en') => {
+    const prevLangPack = currentLang === 'en' ? en : zh;
+    const nextLangPack = lang === 'en' ? en : zh;
+
+    setTasks(prevTasks => prevTasks.map(task => {
+      const isDefaultTask1 = task.name === prevLangPack.rules.defaultTask1;
+      const isDefaultTask2 = task.name === prevLangPack.rules.defaultTask2;
+      
+      const prevNewRulePrefix = prevLangPack.rules.newRuleDefault;
+      const isNewRule = task.name.startsWith(prevNewRulePrefix);
+
+      if (isDefaultTask1) {
+        return { ...task, name: nextLangPack.rules.defaultTask1 };
+      } else if (isDefaultTask2) {
+        return { ...task, name: nextLangPack.rules.defaultTask2 };
+      } else if (isNewRule) {
+        const indexStr = task.name.substring(prevNewRulePrefix.length);
+        return { ...task, name: `${nextLangPack.rules.newRuleDefault}${indexStr}` };
+      }
+      return task;
+    }));
+
+    setCurrentLang(lang);
+    localStorage.setItem('lang', lang);
+  };
+
+  const t = (path: string, defaultValue = ''): string => {
+    const langPack = currentLang === 'en' ? en : zh;
+    const keys = path.split('.');
+    let result: any = langPack;
+    for (const key of keys) {
+      if (result && typeof result === 'object' && key in result) {
+        result = result[key];
+      } else {
+        return defaultValue || path;
+      }
+    }
+    return typeof result === 'string' ? result : (defaultValue || path);
+  };
   // Overlay Selection State
   const [overlayIsDrawing, setOverlayIsDrawing] = useState(false);
   const [overlayStartPos, setOverlayStartPos] = useState<{ x: number; y: number } | null>(null);
@@ -52,35 +101,51 @@ function App() {
   // Target Window State
   const [targetWindow, setTargetWindow] = useState<{ pid: number | null; name: string }>({
     pid: null,
-    name: '不选择 (前台激活模式)'
+    name: t('modal.defaultOption')
   });
   
   const [windowList, setWindowList] = useState<WindowItem[]>([]);
   const [showWindowModal, setShowWindowModal] = useState(false);
   const [isRefreshingWindows, setIsRefreshingWindows] = useState(false);
 
-  const [tasks, setTasks] = useState<TaskItem[]>([
-    {
-      id: 'task-1',
-      name: '游戏HP低自动喝药',
-      mode: 'percentage',
-      triggerKey: '1',
-      threshold: 80,
-      intervalMs: 1000,
-      rect: null,
-      enabled: false,
-    },
-    {
-      id: 'task-2',
-      name: '定时按键触发器',
-      mode: 'interval',
-      triggerKey: 'F5',
-      threshold: 80,
-      intervalMs: 2000,
-      rect: null,
-      enabled: false,
+  const [tasks, setTasks] = useState<TaskItem[]>(() => {
+    const saved = localStorage.getItem('tasks');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Failed to parse saved tasks", e);
+      }
     }
-  ]);
+    const initLang = (localStorage.getItem('lang') as 'zh' | 'en') || 'zh';
+    const langPack = initLang === 'en' ? en : zh;
+    return [
+      {
+        id: 'task-1',
+        name: langPack.rules.defaultTask1,
+        mode: 'percentage',
+        triggerKey: '1',
+        threshold: 80,
+        intervalMs: 1000,
+        rect: null,
+        enabled: false,
+      },
+      {
+        id: 'task-2',
+        name: langPack.rules.defaultTask2,
+        mode: 'interval',
+        triggerKey: 'F5',
+        threshold: 80,
+        intervalMs: 2000,
+        rect: null,
+        enabled: false,
+      }
+    ];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('tasks', JSON.stringify(tasks));
+  }, [tasks]);
   const [logs, setLogs] = useState<string[]>([]);
   const [showDebugLogs, setShowDebugLogs] = useState(false);
   const logsContainerRef = React.useRef<HTMLDivElement>(null);
@@ -91,7 +156,6 @@ function App() {
     }
   }, [logs, showDebugLogs]);
 
-  const [taskScreenshots, setTaskScreenshots] = useState<{ [taskId: string]: string }>({});
   const [activeRectSelectTaskId, setActiveRectSelectTaskId] = useState<string | null>(null);
 
   const refreshTaskScreenshot = async (taskId: string, rect: any) => {
@@ -112,19 +176,27 @@ function App() {
     return `[${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}]`;
   };
 
+  const [taskScreenshots, setTaskScreenshots] = useState<{ [taskId: string]: string }>({});
+  const activeTaskIdRef = React.useRef<string | null>(null);
+  useEffect(() => {
+    activeTaskIdRef.current = activeRectSelectTaskId;
+  }, [activeRectSelectTaskId]);
+
   useEffect(() => {
     if ((window as any).electronAPI) {
-      (window as any).electronAPI.onTaskUpdate((data: any) => {
+      const unsubscribeTask = (window as any).electronAPI.onTaskUpdate((data: any) => {
         const timePrefix = formatLogTime();
-        setLogs(prev => [...prev.slice(-15), `${timePrefix} ${data.message}`]);
+        setLogs(prev => [...prev.slice(-100), `${timePrefix} ${data.message}`]);
       });
-      (window as any).electronAPI.onOverlaySelected(async (newRect: any) => {
-        if (activeRectSelectTaskId && newRect) {
-          setTasks(prev => prev.map(t => t.id === activeRectSelectTaskId ? { ...t, rect: newRect } : t));
+
+      const unsubscribeOverlay = (window as any).electronAPI.onOverlaySelected(async (newRect: any) => {
+        const currentTaskId = activeTaskIdRef.current;
+        if (currentTaskId && newRect) {
+          setTasks(prev => prev.map(t => t.id === currentTaskId ? { ...t, rect: newRect } : t));
           try {
             const dataUrl = await (window as any).electronAPI.captureRect(newRect);
             if (dataUrl) {
-              setTaskScreenshots(prev => ({ ...prev, [activeRectSelectTaskId]: dataUrl }));
+              setTaskScreenshots(prev => ({ ...prev, [currentTaskId]: dataUrl }));
             }
           } catch (e) {
             console.error("Failed to capture rect:", e);
@@ -134,8 +206,13 @@ function App() {
           setActiveRectSelectTaskId(null);
         }
       });
+
+      return () => {
+        unsubscribeTask();
+        unsubscribeOverlay();
+      };
     }
-  }, [activeRectSelectTaskId]);
+  }, []);
 
   useEffect(() => {
     if (isAuthenticated && (window as any).electronAPI) {
@@ -161,7 +238,7 @@ function App() {
 
     if (!globalEnabled || !activeTasksSignatures) return;
 
-    const timers: NodeJS.Timeout[] = [];
+    const timers: any[] = [];
 
     tasks.forEach((task) => {
       if (task.enabled && task.mode === 'percentage' && task.rect) {
@@ -267,7 +344,7 @@ function App() {
     const newId = `task-${Date.now()}`;
     const newTask: TaskItem = {
       id: newId,
-      name: `新增规则 ${tasks.length + 1}`,
+      name: `${t('rules.newRuleDefault')}${tasks.length + 1}`,
       mode: 'percentage',
       triggerKey: 'A',
       threshold: 80,
@@ -288,14 +365,14 @@ function App() {
 
   const handleOpenOverlay = (taskId: string) => {
     if (targetWindow.pid === null) {
-      alert("请先选择目标窗口，再选取识图范围！");
+      alert(t('globalControl.selectWindowAlert'));
       return;
     }
     setActiveRectSelectTaskId(taskId);
     if ((window as any).electronAPI) {
       (window as any).electronAPI.openOverlay();
     } else {
-      alert("Overlay is only available in Desktop App");
+      alert(t('globalControl.overlayAlert'));
     }
   };
 
@@ -398,8 +475,8 @@ function App() {
       >
         {!overlayIsDrawing && (
           <div className="overlay-tip-card">
-            <span className="overlay-tip-title">识图范围选取</span>
-            <span className="overlay-tip-subtitle">在屏幕上拖拽框选所需识图范围 (按 ESC 键取消)</span>
+            <span className="overlay-tip-title">{t('overlay.title')}</span>
+            <span className="overlay-tip-subtitle">{t('overlay.subtitle')}</span>
           </div>
         )}
         <div className="overlay-selection-box" style={selectionStyle}>
@@ -423,18 +500,32 @@ function App() {
   if (!isAuthenticated) {
     return (
       <div className="login-container app-drag">
-        <button onClick={handleClose} className="login-close-btn no-drag" title="关闭">
+        <button onClick={handleClose} className="login-close-btn no-drag" title={t('titleBar.close')}>
           <X size={16} />
         </button>
         <div className="glass-panel login-card app-drag">
           <div className="login-icon">
             <LogIn size={32} color="white" />
           </div>
-          <h1>AutoButton</h1>
-          <p>Please log in or verify your license to continue.</p>
+          <h1>{t('titleBar.title')}</h1>
+          <p>{t('login.subtitle')}</p>
           <button onClick={handleLogin} className="btn-primary no-drag">
-            Verify License
+            {t('login.btnVerify')}
           </button>
+          <div className="login-card-lang-selector no-drag">
+            <button 
+              onClick={() => handleLangChange('zh')} 
+              className={`lang-toggle-btn ${currentLang === 'zh' ? 'active' : ''}`}
+            >
+              中
+            </button>
+            <button 
+              onClick={() => handleLangChange('en')} 
+              className={`lang-toggle-btn ${currentLang === 'en' ? 'active' : ''}`}
+            >
+              EN
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -446,17 +537,17 @@ function App() {
       <header className="title-bar app-drag">
         <div className="title-logo">
           <span className="logo-indicator" />
-          <span className="logo-text">AutoButton</span>
+          <span className="logo-text">{t('titleBar.title')}</span>
         </div>
         <div className="title-drag-area app-drag" />
         <div className="window-controls no-drag">
-          <button onClick={handleMinimize} className="control-btn min-btn" title="最小化">
+          <button onClick={handleMinimize} className="control-btn min-btn" title={t('titleBar.minimize')}>
             <Minus size={14} />
           </button>
-          <button onClick={handleTogglePin} className={`control-btn pin-btn ${isPinned ? 'pinned' : ''}`} title={isPinned ? "取消置顶" : "窗口置顶"}>
+          <button onClick={handleTogglePin} className={`control-btn pin-btn ${isPinned ? 'pinned' : ''}`} title={isPinned ? t('titleBar.unpin') : t('titleBar.pin')}>
             <Pin size={13} className={isPinned ? "rotate-pin" : ""} />
           </button>
-          <button onClick={handleClose} className="control-btn close-btn" title="关闭">
+          <button onClick={handleClose} className="control-btn close-btn" title={t('titleBar.close')}>
             <X size={14} />
           </button>
         </div>
@@ -472,9 +563,9 @@ function App() {
             {/* Global Control: Left Aligned */}
             <div className="global-control-left-section">
               <div className="global-control-details">
-                <span className="master-title">全局引擎总控</span>
+                <span className="master-title">{t('globalControl.title')}</span>
                 <span className={`master-status ${globalEnabled ? 'active' : ''}`}>
-                  {globalEnabled ? "● 运行中 (RUNNING)" : "○ 已暂停 (STANDBY)"}
+                  {globalEnabled ? t('globalControl.statusRunning') : t('globalControl.statusStandby')}
                 </span>
               </div>
               <button 
@@ -487,13 +578,28 @@ function App() {
 
             {/* Target Window Selector: Right Aligned */}
             <div className="global-control-right-section">
+              <div className="lang-toggle-bar">
+                <button 
+                  onClick={() => handleLangChange('zh')} 
+                  className={`lang-toggle-btn ${currentLang === 'zh' ? 'active' : ''}`}
+                >
+                  中
+                </button>
+                <button 
+                  onClick={() => handleLangChange('en')} 
+                  className={`lang-toggle-btn ${currentLang === 'en' ? 'active' : ''}`}
+                >
+                  EN
+                </button>
+              </div>
+
               <button 
                 onClick={handleOpenWindowModal} 
                 className={`select-window-btn ${targetWindow.pid ? 'selected' : ''}`}
               >
                 <Monitor size={14} />
                 <span className="window-select-label">
-                  {targetWindow.pid ? `目标: ${targetWindow.name}` : '目标: 不选择 (前台激活)'}
+                  {targetWindow.pid ? `${t('globalControl.target')}${targetWindow.name}` : t('globalControl.targetLabelDefault')}
                 </span>
               </button>
             </div>
@@ -501,7 +607,7 @@ function App() {
           </div>
           
           <button onClick={handleAddTask} className="add-rule-btn-top">
-            <Plus size={16} /> 新增按键规则
+            <Plus size={16} /> {t('globalControl.addRuleBtn')}
           </button>
         </div>
 
@@ -509,7 +615,7 @@ function App() {
         <div className="rules-scroll-area">
           {tasks.length === 0 ? (
             <div className="empty-rules-hint glass-panel">
-              当前暂无规则，请点击右上角按钮新增规则
+              {t('rules.emptyHint')}
             </div>
           ) : (
             <div className="rules-grid-list">
@@ -523,17 +629,17 @@ function App() {
                       value={task.name} 
                       onChange={(e) => handleUpdateTask(task.id, { name: e.target.value })}
                       className="rule-name-inline-input"
-                      placeholder="规则名称"
+                      placeholder={t('rules.namePlaceholder')}
                     />
                     
                     <div className="rule-card-header-actions">
                       <button 
-                        onClick={(e) => handleUpdateTask(task.id, { enabled: !task.enabled })}
+                        onClick={() => handleUpdateTask(task.id, { enabled: !task.enabled })}
                         className={`task-toggle ${task.enabled ? 'active' : ''}`}
                       >
                         <div className="toggle-dot" />
                       </button>
-                      <button onClick={() => handleDeleteTask(task.id)} className="delete-btn-inline" title="删除规则">
+                      <button onClick={() => handleDeleteTask(task.id)} className="delete-btn-inline" title={t('rules.deleteTitle')}>
                         <Trash2 size={16} />
                       </button>
                     </div>
@@ -544,31 +650,31 @@ function App() {
                     
                     {/* Mode Selector */}
                     <div className="inline-setting-group mode-selector-col">
-                      <label>触发模式</label>
+                      <label>{t('rules.triggerMode')}</label>
                       <div className="inline-mode-tabs">
                         <button
                           onClick={() => handleUpdateTask(task.id, { mode: 'percentage' })}
                           className={`inline-mode-tab-btn ${task.mode === 'percentage' ? 'active' : ''}`}
                         >
-                          OCR百分比
+                          {t('rules.modeOcr')}
                         </button>
                         <button
                           onClick={() => handleUpdateTask(task.id, { mode: 'interval' })}
                           className={`inline-mode-tab-btn ${task.mode === 'interval' ? 'active' : ''}`}
                         >
-                          固定间隔
+                          {t('rules.modeInterval')}
                         </button>
                       </div>
                     </div>
 
                     {/* Key Input */}
                     <div className="inline-setting-group key-input-col">
-                      <label>模拟按键</label>
+                      <label>{t('rules.keyLabel')}</label>
                       <button 
                         onClick={() => setRecordingTaskId(task.id)}
                         className={`recording-key-btn ${recordingTaskId === task.id ? 'recording' : ''}`}
                       >
-                        {recordingTaskId === task.id ? '请按键...' : (task.triggerKey ? task.triggerKey.toUpperCase() : '未设置')}
+                        {recordingTaskId === task.id ? t('rules.keyPressHint') : (task.triggerKey ? task.triggerKey.toUpperCase() : t('rules.keyUnset'))}
                       </button>
                     </div>
 
@@ -577,16 +683,16 @@ function App() {
                       <>
                         {/* 3. OCR Capture */}
                         <div className="inline-setting-group capture-col">
-                          <label>识图范围 (OCR Bounding)</label>
+                          <label>{t('rules.ocrScope')}</label>
                           <div className="rect-preview-box merged-preview">
                             {/* Float Overlay Select Button */}
                             <button 
                               onClick={() => handleOpenOverlay(task.id)} 
                               className="overlay-absolute-btn select-btn"
-                              title={task.rect ? `重新选取范围 [${task.rect.width}x${task.rect.height}]` : "选取范围"}
+                              title={task.rect ? `${t('rules.ocrResetTitle')} [${task.rect.width}x${task.rect.height}]` : t('rules.ocrSelectTitle')}
                             >
                               <Camera size={12} />
-                              <span>{task.rect ? `${task.rect.width}x${task.rect.height}` : "选取范围"}</span>
+                              <span>{task.rect ? `${task.rect.width}x${task.rect.height}` : t('rules.ocrSelectTitle')}</span>
                             </button>
                             
                             {/* Float Overlay Refresh Button */}
@@ -594,7 +700,7 @@ function App() {
                               <button 
                                 onClick={() => refreshTaskScreenshot(task.id, task.rect)} 
                                 className="overlay-absolute-btn refresh-btn"
-                                title="刷新当前画面"
+                                title={t('rules.refreshTitle')}
                               >
                                 <RotateCw size={11} />
                               </button>
@@ -612,12 +718,12 @@ function App() {
                                 </div>
                               ) : (
                                 <div className="screenshot-placeholder">
-                                  <span>正在截取画面...</span>
+                                  <span>{t('rules.capturing')}</span>
                                 </div>
                               )
                             ) : (
                               <div className="screenshot-empty-placeholder">
-                                <span>未设定识别范围</span>
+                                <span>{t('rules.noScope')}</span>
                               </div>
                             )}
                           </div>
@@ -627,7 +733,7 @@ function App() {
                         <div className="inline-setting-group threshold-col">
                           <div className="sub-setting-row">
                             <div className="sub-setting-item">
-                              <label>触发阈值 (低于 %)</label>
+                              <label>{t('rules.thresholdLabel')}</label>
                               <input 
                                 type="number"
                                 min="0"
@@ -639,7 +745,7 @@ function App() {
                               />
                             </div>
                             <div className="sub-setting-item">
-                              <label>检测间隔 (毫秒)</label>
+                              <label>{t('rules.intervalLabel')}</label>
                               <input 
                                 type="number"
                                 value={task.intervalMs || 2000}
@@ -653,7 +759,7 @@ function App() {
                       </>
                     ) : (
                       <div className="inline-setting-group interval-col">
-                        <label>时间间隔 (毫秒)</label>
+                        <label>{t('rules.intervalTimeLabel')}</label>
                         <input 
                           type="number"
                           value={task.intervalMs}
@@ -674,7 +780,7 @@ function App() {
         {/* Bottom Area: System Logs */}
         <div className="glass-panel logs-panel-inline">
           <div className="logs-panel-header">
-            <h3>引擎系统日志</h3>
+            <h3>{t('logs.title')}</h3>
             <div className="logs-panel-actions">
               <label className="checkbox-container">
                 <input 
@@ -682,16 +788,16 @@ function App() {
                   checked={showDebugLogs}
                   onChange={(e) => setShowDebugLogs(e.target.checked)}
                 />
-                <span className="checkbox-label">显示调试日志</span>
+                <span className="checkbox-label">{t('logs.showDebug')}</span>
               </label>
               <button onClick={() => setLogs([])} className="clear-logs-btn">
-                清空日志
+                {t('logs.clearBtn')}
               </button>
             </div>
           </div>
           <div className="logs-container" ref={logsContainerRef}>
             {logs.filter(log => showDebugLogs ? true : !(log.includes('[LOG]') || log.includes('[ERROR]') || log.includes('[WARN]') || log.includes('[排查]'))).length === 0 && (
-              <span className="empty-log">控制中心就绪，开启总控及相应规则后可产生日志...</span>
+              <span className="empty-log">{t('logs.emptyHint')}</span>
             )}
             {logs
               .filter(log => showDebugLogs ? true : !(log.includes('[LOG]') || log.includes('[ERROR]') || log.includes('[WARN]') || log.includes('[排查]')))
@@ -713,9 +819,9 @@ function App() {
         <div className="modal-overlay">
           <div className="glass-panel modal-card animate-scale-up">
             <div className="modal-header">
-              <h3>选择目标窗口</h3>
+              <h3>{t('modal.title')}</h3>
               <div className="modal-header-actions">
-                <button onClick={fetchWindowList} className="modal-action-btn" title="刷新窗口">
+                <button onClick={fetchWindowList} className="modal-action-btn" title={t('modal.refreshTitle')}>
                   <RotateCw size={14} className={isRefreshingWindows ? "animate-spin" : ""} />
                 </button>
                 <button onClick={() => { setShowWindowModal(false); (window as any).electronAPI?.hoverWindowExit(); }} className="modal-action-btn close">
@@ -729,20 +835,20 @@ function App() {
                 
                 {/* Option 1: Do not select window */}
                 <div 
-                  onClick={() => handleSelectWindow(null, '不选择 (前台激活模式)')}
+                  onClick={() => handleSelectWindow(null, t('modal.defaultOption'))}
                   onMouseEnter={() => (window as any).electronAPI?.hoverWindowExit()} // Clear highlight if hovered
                   className={`window-list-item special ${targetWindow.pid === null ? 'selected' : ''}`}
                 >
                   <Monitor size={14} className="window-item-icon" />
                   <div className="window-item-info">
-                    <span className="window-item-title">不选择任何窗口 (仅在前台焦点状态下触发)</span>
-                    <span className="window-item-pid">System Default</span>
+                    <span className="window-item-title">{t('modal.defaultOption')}</span>
+                    <span className="window-item-pid">{t('modal.systemDefault')}</span>
                   </div>
                 </div>
 
                 {/* Loading state */}
                 {isRefreshingWindows && windowList.length === 0 && (
-                  <div className="modal-loading">正在搜索活动窗口...</div>
+                  <div className="modal-loading">{t('modal.loading')}</div>
                 )}
 
                 {/* System window list items */}
@@ -763,7 +869,7 @@ function App() {
                 ))}
 
                 {!isRefreshingWindows && windowList.length === 0 && (
-                  <div className="empty-window-list">未检测到任何包含标题的活跃应用窗口</div>
+                  <div className="empty-window-list">{t('modal.emptyList')}</div>
                 )}
 
               </div>

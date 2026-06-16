@@ -1206,3 +1206,74 @@ body.overlay-active {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* 6. Language Toggle Switch Styles */
+.lang-toggle-bar {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--glass-border);
+  padding: 2px;
+  border-radius: 6px;
+  gap: 2px;
+}
+
+.lang-toggle-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.725rem;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  font-weight: 500;
+  min-width: 32px;
+}
+
+.lang-toggle-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.lang-toggle-btn.active {
+  background: var(--primary);
+  color: white;
+  box-shadow: 0 0 8px var(--primary-glow);
+  font-weight: 600;
+}
+
+.login-close-btn {
+  background: transparent;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.login-close-btn:hover {
+  background: #f43f5e;
+  color: white;
+  border-color: #f43f5e;
+}
+
+/* Login Card Lang Selector */
+.login-card-lang-selector {
+  margin-top: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--glass-border);
+  padding: 2px;
+  border-radius: 6px;
+  gap: 2px;
+  -webkit-app-region: no-drag;
+}

@@ -9,3 +9,4 @@ dist-electron/
 temp/
 .agents/
 .gemini/
+dist-package/

@@ -1,0 +1,64 @@
+{
+  "overlay": {
+    "title": "Select OCR Area",
+    "subtitle": "Drag on screen to select OCR range (Press ESC to cancel)"
+  },
+  "login": {
+    "subtitle": "Verify license to continue",
+    "btnVerify": "Verify"
+  },
+  "titleBar": {
+    "title": "AutoButton",
+    "minimize": "Minimize",
+    "pin": "Pin Window",
+    "unpin": "Unpin Window",
+    "close": "Close"
+  },
+  "globalControl": {
+    "title": "Global Switch",
+    "statusRunning": "● Running",
+    "statusStandby": "○ Standby",
+    "targetLabelDefault": "Target: Unselected (Active Window)",
+    "target": "Target: ",
+    "addRuleBtn": "Add Button Rule",
+    "selectWindowAlert": "Please select a target window first before picking OCR area!",
+    "overlayAlert": "OCR select is only available in Desktop App"
+  },
+  "rules": {
+    "emptyHint": "No rules currently. Click button in top right to add a rule.",
+    "namePlaceholder": "Rule Name",
+    "deleteTitle": "Delete Rule",
+    "triggerMode": "Trigger Mode",
+    "modeOcr": "Percentage Trigger",
+    "modeInterval": "Interval Trigger",
+    "keyLabel": "Simulated Key",
+    "keyPressHint": "Press key...",
+    "keyUnset": "Unset",
+    "ocrScope": "OCR Scope",
+    "ocrResetTitle": "Reselect Scope",
+    "ocrSelectTitle": "Select Scope",
+    "refreshTitle": "Refresh Current Frame",
+    "capturing": "Capturing screen...",
+    "noScope": "No scope set",
+    "thresholdLabel": "Threshold (Below %)",
+    "intervalLabel": "Interval (ms)",
+    "intervalTimeLabel": "Time Interval (ms)",
+    "newRuleDefault": "New Rule ",
+    "defaultTask1": "Percentage trigger sample",
+    "defaultTask2": "Interval trigger sample"
+  },
+  "logs": {
+    "title": "Logs",
+    "showDebug": "Show Debug Logs",
+    "clearBtn": "Clear Logs",
+    "emptyHint": "Control center ready, start switch & enabled rules to generate logs..."
+  },
+  "modal": {
+    "title": "Select Target Window",
+    "refreshTitle": "Refresh Windows",
+    "defaultOption": "Do not select window (Trigger only on foreground focus)",
+    "systemDefault": "Default",
+    "loading": "Searching for active windows...",
+    "emptyList": "No active application windows with titles detected"
+  }
+}
