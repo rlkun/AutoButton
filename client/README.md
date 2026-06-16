@@ -1,6 +1,13 @@
-# AutoButton 辅助工具前端面板说明文档 (README)
+# AutoButton 辅助工具前端面板说明文档 / Client Dashboard Documentation
 
-[简体中文](./README.md) | [English](./README_en.md)
+---
+
+> 请选择您的阅读语言 / Please select your language:
+
+<details open>
+<summary><b>🇨🇳 简体中文说明书 (点击展开/折叠 | Click to toggle)</b></summary>
+
+## AutoButton 辅助工具前端面板说明文档 (README)
 
 欢迎使用 **AutoButton** 自动按键辅助工具。本项目的核心目标是打造一个极简、免安装、支持多语言的一键无缝切换、具备本地存储持久化和纯本地 OCR 触发机制的绿色便捷辅助工具。
 
@@ -8,7 +15,7 @@
 
 ---
 
-## 一、 中英文切换多语言国际化 (i18n) 架构
+### 一、 中英文切换多语言国际化 (i18n) 架构
 
 程序采用了纯静态、响应式、零初始延迟且具备本地状态持久化的多语言国际化引擎：
 
@@ -23,57 +30,141 @@ graph TD
     G --> H[闭包 t() 工具解析对应语言包静态字串]
 ```
 
-### 1. 静态翻译对照机制
+#### 1. 静态翻译对照机制
 所有的界面静态文案均完全与业务逻辑解耦，分别保存在两个物理语言配置文件中，且禁止在包内编写任何带占位符的动态拼接，保证包的纯净度：
 * **中文语言包**：[zh.json](file:///c:/antigravity/AutoButton/client/src/locales/zh.json)
 * **英文语言包**：[en.json](file:///c:/antigravity/AutoButton/client/src/locales/en.json)
 
-### 2. 闭包翻译工具 `t()`
+#### 2. 闭包翻译工具 `t()`
 在 [App.tsx](file:///c:/antigravity/AutoButton/client/src/App.tsx) 顶部，基于当前的 `currentLang` 状态封装了轻量级的局部闭包翻译引擎 `t(key)`。当用户切换语言状态时，触发组件的局部重绘，所有静态字串在零刷新的情况下瞬间被热重构为对应的语言文案。
 
-### 3. 样例模板与默认规则智能联动翻译
+#### 3. 样例模板与默认规则智能联动翻译
 为了提供顶级的交互体验，系统实现了对规则名称的智能联动转译：
 * **智能检测**：在 `handleLangChange` 切换语言时，系统会正则扫描当前所有规则名称。
 * **联动转译**：如果规则名称尚未被用户手动修改过（例如保持着系统默认的 `"百分比触发样例"`、`"固定间隔触发样例"` 或 `"新增规则 1"` 等模板名），系统在切换语言时会**自动将其翻译为目标语言对应的名字**（如 `"Percentage Trigger Example"` / `"New Rule 1"`）。
 * **保留自定义**：如果用户已经编辑并自定义了规则名，则在切换语言时会予以安全保留，不做强行覆盖。
 
-### 4. 语言切换器 UI 交互布局
+#### 4. 语言切换器 UI 交互布局
 为了兼顾美学设计并避开 Windows 无边框拖拽区的点击冲突，多语言切换器被设计在以下两个关键操作点上：
 * **登录验证界面**：将 `中 / EN` 胶囊切换 Tab 置于登录验证卡片内部底端，并指定了 `no-drag` 以防止被外层容器的拖拽手势吞噬，同时完美避开了右上角独立关闭按钮的布局干涉。
 * **主操作面板**：在全局总控开关卡片右侧的“目标窗口选择”按钮旁，融入了一个高度贴合玻璃微拟态风格的胶囊状 `中 / EN` 切换 Tab，实现高亮状态跟随。
 
-### 5. localStorage 状态持久化
+#### 5. localStorage 状态持久化
 用户的语言选择会被自动序列化并物理记录在浏览器的 `localStorage` 中。下一次冷启动该辅助工具时，程序会自动读取并加载该语言习惯，无任何跳闪感。
 
 ---
 
-## 二、 规则持久化与总控安全防错
+### 二、 规则持久化与总控安全防错
 
 除了静态文案外，按键规则配置也引入了全面的持久化逻辑：
-* **规则自动保存**：用户对任务列表（包括识图范围、触发阈值、按键配置以及开启状态等）所作的任何修改，都会自动同步存储。重新打开程序时，会自动恢复您上次离线时的全部任务规则状态。
+* **规则自动保存**：用户对任务列表（包括识图范围、触发阈值、按键配置以及开启状态等）所作的任何修改，都会自动同步存储。重新打开程序时，自动恢复您上次离线时的全部任务规则状态。
 * **总控安全阻断**：考虑到运行安全性，每次重新打开程序时，全局总控总开关强制重置为**关闭状态（`false`）**，不作本地状态记忆。用户必须手动点击开启后才会轮询检测，防止后台静默运行带来不可控的键盘模拟冲突。
 
 ---
 
-## 三、 本地编译、打包与运行
+### 三、 本地编译、打包与运行
 
-### 1. 依赖安装
+#### 1. 依赖安装
 由于底层的键盘模拟 Native add-on (`robotjs`) 涉及 C++ 重建，建议在 Node.js 环境下运行：
 ```bash
 npm install
 ```
 
-### 2. 启动本地开发调试
+#### 2. 启动本地开发调试
 ```bash
 npm run dev
 ```
 
-### 3. 构建优化版绿色免安装分发包
+#### 3. 构建优化版绿色免安装分发包
 运行打包脚本后，`electron-builder` 会自动针对 dependencies 进行极简化打包，仅将 `robotjs` Native 动态链接库和 `tesseract.js` worker 脚本物理拆包（仅 2 个文件解包），使 Portable 版本启动速度达到秒开极限：
 ```bash
 npm run dist
 ```
 打包产物输出在 `dist-package/` 目录中：
 * **`AutoButton 0.0.0.exe`**：绿色单文件便携版（免安装，双击秒开）。
-* **`AutoButton-0.0.0-win.zip`** : 解压即用压缩包。
+* **`AutoButton-0.0.0-win.zip`**：解压即用压缩包。
 * **诊断日志**：程序运行后，如果需要排查，可直接进入系统 `%APPDATA%\client\diagnostic.log` 查看主进程和 OCR 的后台自检诊断日志。
+
+</details>
+
+<details>
+<summary><b>🇺🇸 English Manual (点击展开/折叠 | Click to toggle)</b></summary>
+
+## AutoButton Client Dashboard Documentation (README)
+
+Welcome to the **AutoButton** automatic hotkey assistant client workspace. The primary goal of the workspace is to offer a portable, offline, multi-language (seamless one-click swap), locally-persisted UI dashboard with local WebAssembly-based OCR trigger rules.
+
+This document describes the design and configuration of the **Multi-Language (i18n) Engine** to help you customize or integrate further.
+
+---
+
+### 1. Multi-Language i18n Architecture
+
+The client utilizes a lightweight, reactive, zero-latency multi-language engine with persistent local storage:
+
+```mermaid
+graph TD
+    A[User clicks i18n capsule Tab] --> B(handleLangChange logic)
+    B --> C{Has the rule name been edited?}
+    C -- No --> D[Link and translate default templates]
+    C -- Yes --> E[Retain custom user name]
+    B --> F[Update currentLang state and write to localStorage]
+    F --> G[React redraw triggered across workspace]
+    G --> H[Closure t() lookup inside target locales dictionary]
+```
+
+#### 1. Static Translation Dictionaries
+To prevent strings from mingling with business logic, all UI texts are decoupled into dedicated static JSON dictionary files (strictly avoiding inline dynamic concatenation/interpolations):
+* Chinese Dictionary: [zh.json](file:///c:/antigravity/AutoButton/client/src/locales/zh.json)
+* English Dictionary: [en.json](file:///c:/antigravity/AutoButton/client/src/locales/en.json)
+
+#### 2. Reactive Translation Wrapper `t()`
+A local utility `t(key)` is scoped inside the parent `App` component in [App.tsx](file:///c:/antigravity/AutoButton/client/src/App.tsx). State updates to `currentLang` trigger a reactive redraw, converting all UI keys to the target language instantly.
+
+#### 3. Smart Default Rule Name Translation
+To deliver premium interaction, the application tracks rule names on transition:
+* **Detection**: On language changes, the `handleLangChange` function scans current task names.
+* **Auto-Translation**: If rule names remain unchanged (matching defaults such as `"百分比触发样例"`, `"固定间隔触发样例"`, or `"新增规则 X"`), they are **automatically translated to their target language counterparts** (e.g., `"Percentage Trigger Example"` / `"New Rule X"`).
+* **Bypass**: Any manually edited rule name is bypassed to preserve user customizations.
+
+#### 4. Selector UI Layout & Placement
+To bypass Electron's frameless window drag capture and avoid space conflicts, selectors are placed strategically:
+* **Login View**: The `中 / EN` selector sits neatly at the bottom of the card with `no-drag` attributes, avoiding click interception and remaining clear of the top-right close button.
+* **Dashboard View**: A glassmorphic `中 / EN` capsule selector is placed adjacent to the "Window Selection" button for seamless control.
+
+#### 5. localStorage State Persistence
+The language choice is written directly to the browser's `localStorage`. This choice is restored on boot to prevent flash/flicker.
+
+---
+
+### 2. Task Persistence & Safety Guard
+
+* **Auto-Save**: Rule configurations (bounds, thresholds, intervals, key bindings, and task states) write immediately to `localStorage` on any modification and restore on application boot.
+* **Safety Guard**: The global running control toggle is **never persisted and defaults to off (false)** on cold-start. This prevents loops or key press conflicts upon opening the program.
+
+---
+
+### 3. Local Build, Packaging & Execution
+
+#### 1. Install Dependencies
+Ensure you install Node dependencies for native addon setup:
+```bash
+npm install
+```
+
+#### 2. Dev server
+```bash
+npm run dev
+```
+
+#### 3. Build Portable EXE
+The builder performs dependency pruning to exclude dev dependencies from the ASAR archive, yielding an optimized **93.6MB** file. It extracts *only* `robotjs.node` and `worker-script/node/index.js` (exactly 2 files) via `asarUnpack`, enabling **instant millisecond-level cold start speed**:
+```bash
+npm run dist
+```
+Builds are saved in `dist-package/`:
+* **`AutoButton 0.0.0.exe`**: Portable executable.
+* **`AutoButton-0.0.0-win.zip`**: Compressed archive.
+* **Diagnostics**: Logs write to `%APPDATA%\client\diagnostic.log` on startup. If any issues occur, check this file for details.
+
+</details>
