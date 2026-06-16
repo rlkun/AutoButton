@@ -6,45 +6,23 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "dist": "tsc -b && vite build && electron-builder --win",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
-    "electron:dev": "vite"
-  },
-  "main": "dist-electron/main.cjs",
-  "build": {
-    "productName": "AutoButton",
-    "appId": "com.xzw.autobutton",
-    "asar": true,
-    "asarUnpack": [
-      "**/node_modules/robotjs/build/Release/robotjs.node",
-      "**/node_modules/tesseract.js/src/worker-script/node/index.js"
-    ],
-    "win": {
-      "icon": "public/icon.ico",
-      "target": [
-        "portable",
-        "zip"
-      ]
-    },
-    "directories": {
-      "output": "dist-package"
-    }
+    "tauri:dev": "npx tauri dev",
+    "tauri:build": "npx tauri build"
   },
   "dependencies": {
-    "robotjs": "^0.7.1",
-    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@tauri-apps/api": "^2.11.0",
+    "@tauri-apps/cli": "^2.11.2",
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "axios": "^1.18.0",
     "clsx": "^2.1.1",
-    "electron": "^42.4.0",
-    "electron-builder": "^26.15.3",
     "eslint": "^10.3.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
@@ -55,7 +33,6 @@
     "tailwind-merge": "^3.6.0",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
-    "vite": "^8.0.12",
-    "vite-plugin-electron": "^1.0.4"
+    "vite": "^8.0.12"
   }
 }

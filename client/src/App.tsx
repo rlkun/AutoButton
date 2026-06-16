@@ -3,6 +3,23 @@ import { Camera, LogIn, Plus, Trash2, X, Minus, Pin, Monitor, RotateCw } from 'l
 import './index.css';
 import zh from './locales/zh.json';
 import en from './locales/en.json';
+import {
+  verifyLicense,
+  startTask,
+  openOverlay,
+  getWindowList,
+  captureRect,
+  minimizeWindow,
+  toggleWindowPin,
+  closeWindow,
+  sendSelectedRect,
+  setWindowHover,
+  setWindowHoverExit,
+  onTaskUpdate,
+  onOverlaySelected,
+  getWindowLabel,
+  getWindowLabelSync,
+} from './services/ipc';
 
 interface TaskItem {
   id: string;
@@ -74,23 +91,41 @@ function App() {
   const [overlayCurPos, setOverlayCurPos] = useState<{ x: number; y: number } | null>(null);
   const [mousePos, setMousePos] = useState({ x: -9999, y: -9999 });
 
+  const [windowLabel, setWindowLabel] = useState<string | null>(() => getWindowLabelSync());
+
   useEffect(() => {
-    if (window.location.hash !== '#/overlay') return;
-    
-    document.body.classList.add('overlay-active');
-    
+    let isOverlay = false;
+    let isHighlighter = false;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if ((window as any).electronAPI) {
-          (window as any).electronAPI.sendSelectedRect(null);
-        }
+        sendSelectedRect(null);
       }
     };
-    
-    window.addEventListener('keydown', handleKeyDown);
+
+    getWindowLabel().then(label => {
+      setWindowLabel(label);
+      if (label === 'overlay') {
+        isOverlay = true;
+        document.body.style.background = 'transparent';
+        document.body.classList.add('overlay-active');
+        window.addEventListener('keydown', handleKeyDown);
+      } else if (label === 'highlighter') {
+        isHighlighter = true;
+        document.body.style.background = 'transparent';
+        document.body.classList.add('highlighter-active');
+      }
+    });
+
     return () => {
-      document.body.classList.remove('overlay-active');
-      window.removeEventListener('keydown', handleKeyDown);
+      if (isOverlay) {
+        document.body.style.background = '';
+        document.body.classList.remove('overlay-active');
+        window.removeEventListener('keydown', handleKeyDown);
+      }
+      if (isHighlighter) {
+        document.body.style.background = '';
+        document.body.classList.remove('highlighter-active');
+      }
     };
   }, []);
 
@@ -159,9 +194,9 @@ function App() {
   const [activeRectSelectTaskId, setActiveRectSelectTaskId] = useState<string | null>(null);
 
   const refreshTaskScreenshot = async (taskId: string, rect: any) => {
-    if (!rect || !(window as any).electronAPI) return;
+    if (!rect) return;
     try {
-      const dataUrl = await (window as any).electronAPI.captureRect(rect);
+      const dataUrl = await captureRect(rect);
       if (dataUrl) {
         setTaskScreenshots(prev => ({ ...prev, [taskId]: dataUrl }));
       }
@@ -183,43 +218,41 @@ function App() {
   }, [activeRectSelectTaskId]);
 
   useEffect(() => {
-    if ((window as any).electronAPI) {
-      const unsubscribeTask = (window as any).electronAPI.onTaskUpdate((data: any) => {
-        const timePrefix = formatLogTime();
-        setLogs(prev => [...prev.slice(-100), `${timePrefix} ${data.message}`]);
-      });
+    const unsubscribeTask = onTaskUpdate((data: any) => {
+      const timePrefix = formatLogTime();
+      setLogs(prev => [...prev.slice(-100), `${timePrefix} ${data.message}`]);
+    });
 
-      const unsubscribeOverlay = (window as any).electronAPI.onOverlaySelected(async (newRect: any) => {
-        const currentTaskId = activeTaskIdRef.current;
-        if (currentTaskId && newRect) {
-          setTasks(prev => prev.map(t => t.id === currentTaskId ? { ...t, rect: newRect } : t));
-          try {
-            const dataUrl = await (window as any).electronAPI.captureRect(newRect);
-            if (dataUrl) {
-              setTaskScreenshots(prev => ({ ...prev, [currentTaskId]: dataUrl }));
-            }
-          } catch (e) {
-            console.error("Failed to capture rect:", e);
+    const unsubscribeOverlay = onOverlaySelected(async (newRect: any) => {
+      const currentTaskId = activeTaskIdRef.current;
+      if (currentTaskId && newRect) {
+        setTasks(prev => prev.map(t => t.id === currentTaskId ? { ...t, rect: newRect } : t));
+        try {
+          const dataUrl = await captureRect(newRect);
+          if (dataUrl) {
+            setTaskScreenshots(prev => ({ ...prev, [currentTaskId]: dataUrl }));
           }
-          setActiveRectSelectTaskId(null);
-        } else {
-          setActiveRectSelectTaskId(null);
+        } catch (e) {
+          console.error("Failed to capture rect:", e);
         }
-      });
+        setActiveRectSelectTaskId(null);
+      } else {
+        setActiveRectSelectTaskId(null);
+      }
+    });
 
-      return () => {
-        unsubscribeTask();
-        unsubscribeOverlay();
-      };
-    }
+    return () => {
+      unsubscribeTask();
+      unsubscribeOverlay();
+    };
   }, []);
 
   useEffect(() => {
-    if (isAuthenticated && (window as any).electronAPI) {
+    if (isAuthenticated) {
       tasks.forEach(async (task) => {
         if (task.mode === 'percentage' && task.rect && !taskScreenshots[task.id]) {
           try {
-            const dataUrl = await (window as any).electronAPI.captureRect(task.rect);
+            const dataUrl = await captureRect(task.rect);
             if (dataUrl) {
               setTaskScreenshots(prev => ({ ...prev, [task.id]: dataUrl }));
             }
@@ -258,8 +291,8 @@ function App() {
 
   // Sync scheduler to main process
   useEffect(() => {
-    if ((window as any).electronAPI && isAuthenticated) {
-      (window as any).electronAPI.startTask({ tasks, globalEnabled, targetWindow });
+    if (isAuthenticated) {
+      startTask({ tasks, globalEnabled, targetWindow });
     }
   }, [tasks, globalEnabled, targetWindow, isAuthenticated]);
 
@@ -332,12 +365,8 @@ function App() {
   }, [recordingTaskId]);
 
   const handleLogin = async () => {
-    if ((window as any).electronAPI) {
-      const res = await (window as any).electronAPI.verifyLicense();
-      if (res.success) setIsAuthenticated(true);
-    } else {
-      setIsAuthenticated(true);
-    }
+    const res = await verifyLicense();
+    if (res.success) setIsAuthenticated(true);
   };
 
   const handleAddTask = () => {
@@ -369,19 +398,14 @@ function App() {
       return;
     }
     setActiveRectSelectTaskId(taskId);
-    if ((window as any).electronAPI) {
-      (window as any).electronAPI.openOverlay();
-    } else {
-      alert(t('globalControl.overlayAlert'));
-    }
+    openOverlay();
   };
 
-  // Fetch windows list from Electron
+  // Fetch windows list from IPC adapter
   const fetchWindowList = async () => {
-    if (!(window as any).electronAPI) return;
     setIsRefreshingWindows(true);
     try {
-      const list = await (window as any).electronAPI.getWindowList();
+      const list = await getWindowList();
       setWindowList(list || []);
     } catch (e) {
       console.error(e);
@@ -398,24 +422,28 @@ function App() {
   const handleSelectWindow = (pid: number | null, name: string) => {
     setTargetWindow({ pid, name });
     setShowWindowModal(false);
-    (window as any).electronAPI?.hoverWindowExit(); // Hide highlighters on close
+    setWindowHoverExit();
   };
 
   // Title bar controls
-  const handleMinimize = () => (window as any).electronAPI?.minimize();
+  const handleMinimize = () => minimizeWindow();
   const handleTogglePin = async () => {
-    if ((window as any).electronAPI) {
-      const res = await (window as any).electronAPI.pin();
-      if (res.success) {
-        setIsPinned(res.pinned);
-      }
-    } else {
-      setIsPinned(!isPinned);
+    const res = await toggleWindowPin();
+    if (res.success) {
+      setIsPinned(res.pinned);
     }
   };
-  const handleClose = () => (window as any).electronAPI?.close();
+  const handleClose = () => closeWindow();
 
-  if (window.location.hash === '#/overlay') {
+  if (windowLabel === null) {
+    return <div style={{ background: 'transparent', width: '100vw', height: '100vh' }} />;
+  }
+
+  if (windowLabel === 'highlighter') {
+    return <div className="border-box" style={{ width: '100vw', height: '100vh' }} />;
+  }
+
+  if (windowLabel === 'overlay') {
     const handleMouseDown = (e: React.MouseEvent) => {
       if (e.button !== 0) return;
       setMousePos({ x: e.clientX, y: e.clientY });
@@ -434,15 +462,24 @@ function App() {
       if (!overlayIsDrawing || !overlayStartPos || !overlayCurPos) return;
       setOverlayIsDrawing(false);
 
-      const x = Math.min(overlayStartPos.x, overlayCurPos.x);
-      const y = Math.min(overlayStartPos.y, overlayCurPos.y);
+      const localX = Math.min(overlayStartPos.x, overlayCurPos.x);
+      const localY = Math.min(overlayStartPos.y, overlayCurPos.y);
       const width = Math.abs(overlayStartPos.x - overlayCurPos.x);
       const height = Math.abs(overlayStartPos.y - overlayCurPos.y);
 
       if (width > 5 && height > 5) {
-        if ((window as any).electronAPI) {
-          (window as any).electronAPI.sendSelectedRect({ x, y, width, height });
-        }
+        // 读取预先由 Rust 注入到各屏幕窗口的物理像素偏移量和缩放因子
+        const physXOffset = (window as any).__custom_window_physical_x__ || 0;
+        const physYOffset = (window as any).__custom_window_physical_y__ || 0;
+        const scaleFactor = (window as any).__custom_window_scale_factor__ || 1.0;
+
+        // 转换为跨多屏幕的系统绝对物理像素坐标
+        const physX = physXOffset + Math.round(localX * scaleFactor);
+        const physY = physYOffset + Math.round(localY * scaleFactor);
+        const physW = Math.round(width * scaleFactor);
+        const physH = Math.round(height * scaleFactor);
+
+        sendSelectedRect({ x: physX, y: physY, width: physW, height: physH });
       }
 
       setOverlayStartPos(null);
@@ -824,7 +861,7 @@ function App() {
                 <button onClick={fetchWindowList} className="modal-action-btn" title={t('modal.refreshTitle')}>
                   <RotateCw size={14} className={isRefreshingWindows ? "animate-spin" : ""} />
                 </button>
-                <button onClick={() => { setShowWindowModal(false); (window as any).electronAPI?.hoverWindowExit(); }} className="modal-action-btn close">
+                <button onClick={() => { setShowWindowModal(false); setWindowHoverExit(); }} className="modal-action-btn close">
                   <X size={16} />
                 </button>
               </div>
@@ -836,7 +873,7 @@ function App() {
                 {/* Option 1: Do not select window */}
                 <div 
                   onClick={() => handleSelectWindow(null, t('modal.defaultOption'))}
-                  onMouseEnter={() => (window as any).electronAPI?.hoverWindowExit()} // Clear highlight if hovered
+                  onMouseEnter={() => setWindowHoverExit()} // Clear highlight if hovered
                   className={`window-list-item special ${targetWindow.pid === null ? 'selected' : ''}`}
                 >
                   <Monitor size={14} className="window-item-icon" />
@@ -856,8 +893,8 @@ function App() {
                   <div 
                     key={win.pid}
                     onClick={() => handleSelectWindow(win.pid, win.title)}
-                    onMouseEnter={() => (window as any).electronAPI?.hoverWindow({ x: win.x, y: win.y, width: win.width, height: win.height })}
-                    onMouseLeave={() => (window as any).electronAPI?.hoverWindowExit()}
+                    onMouseEnter={() => setWindowHover({ x: win.x, y: win.y, width: win.width, height: win.height })}
+                    onMouseLeave={() => setWindowHoverExit()}
                     className={`window-list-item ${targetWindow.pid === win.pid ? 'selected' : ''}`}
                   >
                     <Monitor size={14} className="window-item-icon" />

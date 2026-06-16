@@ -10,3 +10,6 @@ temp/
 .agents/
 .gemini/
 dist-package/
+# Tauri / Rust
+target/
+
