@@ -1,5 +1,7 @@
 # AutoButton 自动按键辅助工具 (README)
 
+[简体中文](./README.md) | [English](./README_en.md)
+
 AutoButton 是一款极简、免安装、支持多语言一键无缝切换、具备本地存储持久化与纯本地离线 OCR 数字识别触发的绿色桌面辅助工具。
 
 > **🤖 声明：本应用前端面板、Electron 主进程、多语言引擎及打包构建方案等核心架构，均由 Google Gemini (Antigravity AI 编码助手) 辅助并与开发者共同合作开发完成。**
