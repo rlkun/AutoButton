@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # 项目通用规则 (General Project Rules)
 
 这里是您希望 Gemini 每次在这个项目中被调用时都遵守的固定参数或规则。本配置根据全栈开发者的身份进行了定制整合。
@@ -40,6 +44,7 @@
 ---
 
 ## 5. Git 提交规范 (Git Commit Standards)
+- 用户没有自测通过，没有明确指令，禁止自行提交推送
 - 代码提交时的 Commit Message 必须遵循规范前缀：
   - `feat:` 新增功能
   - `fix:` 修复缺陷
