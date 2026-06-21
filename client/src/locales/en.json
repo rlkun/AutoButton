@@ -50,7 +50,9 @@
   "logs": {
     "title": "Logs",
     "showDebug": "Show Debug Logs",
+    "copyAllBtn": "Copy Logs",
     "clearBtn": "Clear Logs",
+    "doubleClickCopy": "Double click to copy this line",
     "emptyHint": "Control center ready, start switch & enabled rules to generate logs..."
   },
   "modal": {

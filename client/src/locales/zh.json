@@ -50,7 +50,9 @@
   "logs": {
     "title": "日志",
     "showDebug": "显示调试日志",
+    "copyAllBtn": "复制日志",
     "clearBtn": "清空日志",
+    "doubleClickCopy": "双击复制此行",
     "emptyHint": "控制中心就绪，开启总控及相应规则后可产生日志..."
   },
   "modal": {

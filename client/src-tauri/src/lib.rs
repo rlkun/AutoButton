@@ -183,7 +183,7 @@ fn start_task(
                             message: format!("[排查] 识图任务 [{}] 抓图检测中...", task.name)
                         });
 
-                        let mut num: Option<i32> = None;
+                        let mut ocr_res: Option<(String, String, i32)> = None;
                         
                         if let Some((pixels, w, h)) = capture::capture_screen_rect_raw(
                             rect.x as i32,
@@ -191,12 +191,12 @@ fn start_task(
                             rect.width as i32,
                             rect.height as i32,
                         ) {
-                            num = ocr::recognize_number_from_pixels(&pixels, w, h);
+                            ocr_res = ocr::recognize_number_from_pixels(&pixels, w, h);
                         }
 
                         let mut is_mocked = false;
-                        let val = match num {
-                            Some(v) => v,
+                        let (raw_ocr_text, raw_content, val) = match ocr_res {
+                            Some((ocr_text, raw, v)) => (ocr_text, raw, v),
                             None => {
                                 is_mocked = true;
                                 // 使用系统微秒产生一个 60~100 的波动值降级 fallback
@@ -204,7 +204,8 @@ fn start_task(
                                     .duration_since(std::time::UNIX_EPOCH)
                                     .unwrap_or_default()
                                     .as_micros();
-                                ((t % 40) as i32) + 60
+                                let v = ((t % 40) as i32) + 60;
+                                (String::from("OCR_FAILED"), format!("OCR_FAILED(降级值: {})", v), v)
                             }
                         };
 
@@ -214,21 +215,21 @@ fn start_task(
                             });
                         } else {
                             let _ = app_h.emit("task-update", LogPayload {
-                                message: format!("[排查] 真实 OCR 识别成功 -> 图像数值: {}%, 阈值: < {}%", val, task.threshold)
+                                message: format!("[排查] 真实 OCR 识别成功 -> 原始识别: \"{}\", 图像数值: \"{}\", 折算百分比: {}%, 阈值: < {}%", raw_ocr_text, raw_content, val, task.threshold)
                             });
                         }
 
                         if val < task.threshold {
                             let press_ok = input::press_key(&task.trigger_key);
                             let msg = if press_ok {
-                                format!("[触发] [{}] 数值 {}% < 阈值 {}%, 执行按键: {}", task.name, val, task.threshold, task.trigger_key)
+                                format!("[触发] [{}] 原始识别: \"{}\" | 识别值: \"{}\" (对应百分比: {}%) < 阈值 {}%, 执行按键: {}", task.name, raw_ocr_text, raw_content, val, task.threshold, task.trigger_key)
                             } else {
-                                format!("[触发] [{}] 数值 {}% < 阈值 {}%, 但模拟物理键失败", task.name, val, task.threshold)
+                                format!("[触发] [{}] 原始识别: \"{}\" | 识别值: \"{}\" (对应百分比: {}%) < 阈值 {}%, 但模拟物理键失败", task.name, raw_ocr_text, raw_content, val, task.threshold)
                             };
                             let _ = app_h.emit("task-update", LogPayload { message: msg });
                         } else {
                             let _ = app_h.emit("task-update", LogPayload {
-                                message: format!("[未触发] [{}] 识别值 {}% >= 设定阈值 {}%", task.name, val, task.threshold)
+                                message: format!("[未触发] [{}] 原始识别: \"{}\" | 识别值: \"{}\" (对应百分比: {}%) >= 设定阈值 {}%", task.name, raw_ocr_text, raw_content, val, task.threshold)
                             });
                         }
                     }

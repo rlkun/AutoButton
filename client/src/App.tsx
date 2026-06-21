@@ -185,6 +185,20 @@ function App() {
   const [showDebugLogs, setShowDebugLogs] = useState(false);
   const logsContainerRef = React.useRef<HTMLDivElement>(null);
 
+  const handleCopyLog = (text: string) => {
+    navigator.clipboard.writeText(text).catch(err => {
+      console.error('Failed to copy log:', err);
+    });
+  };
+
+  const handleCopyAllLogs = () => {
+    const filtered = logs.filter(log => showDebugLogs ? true : !(log.includes('[LOG]') || log.includes('[ERROR]') || log.includes('[WARN]') || log.includes('[排查]')));
+    const textToCopy = filtered.join('\n');
+    navigator.clipboard.writeText(textToCopy).catch(err => {
+      console.error('Failed to copy all logs:', err);
+    });
+  };
+
   useEffect(() => {
     if (logsContainerRef.current) {
       logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
@@ -827,6 +841,9 @@ function App() {
                 />
                 <span className="checkbox-label">{t('logs.showDebug')}</span>
               </label>
+              <button onClick={handleCopyAllLogs} className="clear-logs-btn" style={{ marginRight: '8px' }}>
+                {t('logs.copyAllBtn')}
+              </button>
               <button onClick={() => setLogs([])} className="clear-logs-btn">
                 {t('logs.clearBtn')}
               </button>
@@ -841,7 +858,13 @@ function App() {
               .map((log, i, filteredArray) => {
                 const isLatest = i === filteredArray.length - 1;
                 return (
-                  <div key={i} className={`log-entry ${isLatest ? 'latest-log' : ''}`}>
+                  <div 
+                    key={i} 
+                    className={`log-entry ${isLatest ? 'latest-log' : ''}`}
+                    onDoubleClick={() => handleCopyLog(log)}
+                    title={t('logs.doubleClickCopy')}
+                    style={{ cursor: 'pointer' }}
+                  >
                     &gt; {log}
                   </div>
                 );
