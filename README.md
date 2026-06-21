@@ -60,6 +60,13 @@ AutoButton/
 #### 5. 0 占用窗口焦点追踪
 * 使用 Win32 `GetForegroundWindow` / `GetWindowThreadProcessId` 轮询目标窗口。0 CPU 底噪损耗，且彻底告别杀毒软件对高频 PowerShell 进程管道捕获的敏感误报。
 
+#### 6. 双路并发 OCR 与综合打分决策 (极性自适应)
+* 同时引入“原图”与“反相图”（RGB 通道进行 `255 - X` 反转）双路 OCR 并行识别，彻底消除黑底白字与白底黑字在不同场景下的识别极性盲区。
+* 编写综合打分模型对两路解析数据进行质量评估：比率格式基础分 `100`，单值 `50`，中文汉字污染重罚 `-60`（防止背景噪点被识为中文导致数字截断），比率超限逻辑错误惩罚 `-40`，原图偏向微调 `+5`。自动筛选并采信分值最高的最优结果，在复杂动态背景下具有超强鲁棒性。
+
+#### 7. 交互式日志与一键双击复制
+* 在前端日志栏面板新增“一键复制全部日志”功能，并且支持双击单行日志直接将该条目快速写入剪贴板，大大提升了调试与日志上报的交互便利性。
+
 ---
 
 ### 三、 中英文多语言国际化 (i18n) 设计
@@ -155,6 +162,13 @@ We replaced all native interfaces with pure Rust APIs, achieving significant per
 
 #### 5. Silent Active Window Focus Tracker
 * Uses Win32 `GetForegroundWindow` / `GetWindowThreadProcessId` to monitor active process state. **0 CPU overhead**, eliminating antivirus flags for high-frequency PowerShell queries.
+
+#### 6. Dual-Path OCR & Comprehensive Scoring System
+* Simultaneously processes both the "Original" and "Inverted" (RGB inverted via `255 - X`) images in parallel, completely eradicating recognition polarity blind spots (e.g. white-on-black vs black-on-white text).
+* Evaluates both paths using a scoring model: Ratio formats yield a base score of `+100`; single numbers yield `+50`; Chinese character intrusion triggers a heavy penalty of `-60` to avoid background noise truncation; out-of-bounds ratio percentages trigger `-40`; a slight bias of `+5` is granted to the original image. The path with the highest score is dynamically selected.
+
+#### 7. Interactive Logs & Single-Line Copy
+* Added a one-click "Copy All Logs" feature and supports double-clicking any log entry to instantly copy the line to the clipboard, simplifying the logging, debugging, and feedback process.
 
 ---
 
