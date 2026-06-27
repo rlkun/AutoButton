@@ -1293,3 +1293,78 @@ body.overlay-active {
   from { opacity: 0.7; }
   to { opacity: 1; }
 }
+
+/* 7. Global Hotkey Switch Styles */
+.global-hotkey-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.05), 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 4px 12px;
+  border-radius: 10px;
+  margin-left: 0.75rem;
+  height: 36px;
+  transition: all 0.3s ease;
+  flex-shrink: 0; /* 防止宽度被压缩 */
+}
+
+.global-hotkey-control:hover {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+}
+
+.global-hotkey-label {
+  font-size: 0.725rem;
+  color: var(--text-secondary);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap; /* 强制文本横向单行不换行 */
+}
+
+.global-hotkey-btn {
+  width: auto;
+  min-width: 80px;
+  font-size: 0.775rem;
+  font-weight: 750;
+  height: 26px !important;
+  padding: 0 12px !important;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #3b82f6;
+  text-shadow: 0 0 8px rgba(59, 130, 246, 0.4);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap; /* 强制快捷键字母横向单行不换行 */
+  flex-shrink: 0;
+}
+
+.global-hotkey-btn:hover:not(.recording) {
+  border-color: rgba(59, 130, 246, 0.4) !important;
+  background: rgba(59, 130, 246, 0.06) !important;
+  color: #60a5fa !important;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.2), 0 2px 6px rgba(0, 0, 0, 0.2) !important;
+}
+
+.global-hotkey-btn.recording {
+  background: rgba(244, 63, 94, 0.15) !important;
+  border-color: #f43f5e !important;
+  color: #fb7185 !important;
+  text-shadow: 0 0 8px rgba(244, 63, 94, 0.5) !important;
+  animation: globalHotkeyPulse 1.2s infinite alternate !important;
+}
+
+@keyframes globalHotkeyPulse {
+  from {
+    box-shadow: inset 0 0 4px rgba(244, 63, 94, 0.3), 0 0 8px rgba(244, 63, 94, 0.3);
+  }
+  to {
+    box-shadow: inset 0 0 8px rgba(244, 63, 94, 0.5), 0 0 14px rgba(244, 63, 94, 0.6);
+  }
+}
+
+
+

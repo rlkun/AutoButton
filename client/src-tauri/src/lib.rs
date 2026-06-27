@@ -395,6 +395,140 @@ fn toggle_window_pin(app_handle: tauri::AppHandle) -> PinResult {
     }
 }
 
+static HOTKEY_THREAD_ID: Mutex<Option<u32>> = Mutex::new(None);
+
+fn parse_trigger_key(key: &str) -> u32 {
+    let lower = key.to_lowercase();
+    match lower.as_str() {
+        "space" => 0x20,  // VK_SPACE
+        "enter" => 0x0D,  // VK_RETURN
+        "escape" => 0x1B, // VK_ESCAPE
+        "backspace" => 0x08, // VK_BACK
+        "tab" => 0x09,    // VK_TAB
+        "up" => 0x26,     // VK_UP
+        "down" => 0x28,   // VK_DOWN
+        "left" => 0x25,   // VK_LEFT
+        "right" => 0x27,  // VK_RIGHT
+        "delete" => 0x2E, // VK_DELETE
+        "f1" => 0x70,     // VK_F1
+        "f2" => 0x71,
+        "f3" => 0x72,
+        "f4" => 0x73,
+        "f5" => 0x74,
+        "f6" => 0x75,
+        "f7" => 0x76,
+        "f8" => 0x77,
+        "f9" => 0x78,
+        "f10" => 0x79,
+        "f11" => 0x7A,
+        "f12" => 0x7B,
+        "0" => 0x30,
+        "1" => 0x31,
+        "2" => 0x32,
+        "3" => 0x33,
+        "4" => 0x34,
+        "5" => 0x35,
+        "6" => 0x36,
+        "7" => 0x37,
+        "8" => 0x38,
+        "9" => 0x39,
+        other => {
+            if other.len() == 1 {
+                other.chars().next().unwrap().to_ascii_uppercase() as u32
+            } else {
+                0
+            }
+        }
+    }
+}
+
+fn parse_hotkey_string(hotkey: &str) -> (u32, u32) {
+    let parts: Vec<&str> = hotkey.split('+').collect();
+    let mut modifiers = 0u32;
+    let mut vk = 0u32;
+
+    for part in parts {
+        let clean = part.trim().to_lowercase();
+        match clean.as_str() {
+            "ctrl" | "control" => modifiers |= 0x0002, // MOD_CONTROL
+            "alt" => modifiers |= 0x0001,              // MOD_ALT
+            "shift" => modifiers |= 0x0004,            // MOD_SHIFT
+            other => {
+                vk = parse_trigger_key(other);
+            }
+        }
+    }
+    (modifiers, vk)
+}
+
+#[tauri::command]
+fn register_global_hotkey(hotkey: String, app_handle: tauri::AppHandle) -> OpResult {
+    let mut thread_id_lock = HOTKEY_THREAD_ID.lock().unwrap();
+    if let Some(old_tid) = *thread_id_lock {
+        unsafe {
+            let _ = windows::Win32::UI::WindowsAndMessaging::PostThreadMessageW(
+                old_tid,
+                windows::Win32::UI::WindowsAndMessaging::WM_QUIT,
+                windows::Win32::Foundation::WPARAM(0),
+                windows::Win32::Foundation::LPARAM(0),
+            );
+        }
+        *thread_id_lock = None;
+    }
+
+    if hotkey.is_empty() {
+        return OpResult { success: true };
+    }
+
+    let app_h = app_handle.clone();
+    let hotkey_str = hotkey.clone();
+
+    std::thread::spawn(move || {
+        let (modifiers, vk) = parse_hotkey_string(&hotkey_str);
+        if vk == 0 {
+            log::warn!("[热键] 无法解析的全局快捷键: {}", hotkey_str);
+            return;
+        }
+
+        let tid = unsafe { windows::Win32::System::Threading::GetCurrentThreadId() };
+        {
+            let mut lock = HOTKEY_THREAD_ID.lock().unwrap();
+            *lock = Some(tid);
+        }
+
+        unsafe {
+            let reg_res = windows::Win32::UI::Input::KeyboardAndMouse::RegisterHotKey(
+                None,
+                1001,
+                windows::Win32::UI::Input::KeyboardAndMouse::HOT_KEY_MODIFIERS(modifiers),
+                vk,
+            );
+
+            if reg_res.is_err() {
+                log::error!("[热键] 注册全局快捷键失败: {:?}", reg_res);
+                return;
+            }
+
+            log::info!("[热键] 全局快捷键注册成功: {} (modifiers: {}, vk: {})", hotkey_str, modifiers, vk);
+
+            let mut msg = windows::Win32::UI::WindowsAndMessaging::MSG::default();
+            while windows::Win32::UI::WindowsAndMessaging::GetMessageW(&mut msg, None, 0, 0).as_bool() {
+                if msg.message == windows::Win32::UI::WindowsAndMessaging::WM_HOTKEY {
+                    if msg.wParam.0 == 1001 {
+                        log::info!("[热键] 全局热键被触发，投递前端事件...");
+                        let _ = app_h.emit("global-hotkey-triggered", ());
+                    }
+                }
+            }
+
+            let _ = windows::Win32::UI::Input::KeyboardAndMouse::UnregisterHotKey(None, 1001);
+            log::info!("[热键] 全局快捷键已安全注销。");
+        }
+    });
+
+    OpResult { success: true }
+}
+
 // --------------- App 注册入口 ---------------
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -511,6 +645,7 @@ pub fn run() {
             minimize_window,
             close_window,
             toggle_window_pin,
+            register_global_hotkey,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

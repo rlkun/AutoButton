@@ -16,6 +16,7 @@
   },
   "globalControl": {
     "title": "Global Switch",
+    "hotkeyLabel": "Hotkey",
     "statusRunning": "● Running",
     "statusStandby": "○ Standby",
     "targetLabelDefault": "Target: Unselected (Active Window)",

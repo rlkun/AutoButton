@@ -19,6 +19,8 @@ import {
   onOverlaySelected,
   getWindowLabel,
   getWindowLabelSync,
+  registerGlobalHotkey,
+  onGlobalHotkeyTriggered,
 } from './services/ipc';
 
 interface TaskItem {
@@ -45,6 +47,11 @@ function App() {
   const [currentLang, setCurrentLang] = useState<'zh' | 'en'>(() => {
     return (localStorage.getItem('lang') as 'zh' | 'en') || 'zh';
   });
+
+  const [globalHotkey, setGlobalHotkey] = useState<string>(() => {
+    return localStorage.getItem('globalHotkey') || 'F10';
+  });
+  const [isRecordingGlobalHotkey, setIsRecordingGlobalHotkey] = useState(false);
 
   const handleLangChange = (lang: 'zh' | 'en') => {
     const prevLangPack = currentLang === 'en' ? en : zh;
@@ -378,6 +385,51 @@ function App() {
     };
   }, [recordingTaskId]);
 
+  // 录制全局总控热键
+  useEffect(() => {
+    if (!isRecordingGlobalHotkey) return;
+
+    const handleGlobalHotkeyKeyDown = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const robotKey = mapWebKeyToRobotJS(e);
+      setGlobalHotkey(robotKey);
+      localStorage.setItem('globalHotkey', robotKey);
+      setIsRecordingGlobalHotkey(false);
+    };
+
+    window.addEventListener('keydown', handleGlobalHotkeyKeyDown, true);
+    return () => {
+      window.removeEventListener('keydown', handleGlobalHotkeyKeyDown, true);
+    };
+  }, [isRecordingGlobalHotkey]);
+
+  // 将全局总控热键注册到 Rust 侧
+  useEffect(() => {
+    if (isAuthenticated) {
+      registerGlobalHotkey(globalHotkey);
+    }
+    return () => {
+      if (isAuthenticated) {
+        registerGlobalHotkey(''); // 卸载热键
+      }
+    };
+  }, [globalHotkey, isAuthenticated]);
+
+  // 监听 Rust 侧触发热键事件，以 Toggle 总控开关
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const unsubscribeHotkey = onGlobalHotkeyTriggered(() => {
+      setGlobalEnabled(prev => !prev);
+    });
+
+    return () => {
+      unsubscribeHotkey();
+    };
+  }, [isAuthenticated]);
+
   const handleLogin = async () => {
     const res = await verifyLicense();
     if (res.success) setIsAuthenticated(true);
@@ -625,6 +677,19 @@ function App() {
               >
                 <div className="switch-dot" />
               </button>
+
+              <div className="global-hotkey-control no-drag">
+                <span className="global-hotkey-label">{t('globalControl.hotkeyLabel')}</span>
+                <button 
+                  onClick={() => setIsRecordingGlobalHotkey(true)}
+                  className={`recording-key-btn global-hotkey-btn ${isRecordingGlobalHotkey ? 'recording' : ''}`}
+                  title={t('rules.keyPressHint')}
+                >
+                  {isRecordingGlobalHotkey 
+                    ? t('rules.keyPressHint') 
+                    : (globalHotkey ? globalHotkey.toUpperCase() : t('rules.keyUnset'))}
+                </button>
+              </div>
             </div>
 
             {/* Target Window Selector: Right Aligned */}

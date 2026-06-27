@@ -278,3 +278,27 @@ export function onOverlaySelected(callback: (rect: any) => void): () => void {
   }
   return () => {};
 }
+
+/** 注册全局快捷键 */
+export async function registerGlobalHotkey(hotkey: string): Promise<{ success: boolean }> {
+  if (isTauri()) {
+    const invoke = await getTauriInvoke();
+    return invoke('register_global_hotkey', { hotkey });
+  }
+  return { success: true };
+}
+
+/** 订阅全局快捷键触发事件 */
+export function onGlobalHotkeyTriggered(callback: () => void): () => void {
+  if (isTauri()) {
+    let unlisten: (() => void) | null = null;
+    getTauriListen().then(listen => {
+      listen('global-hotkey-triggered', () => callback()).then(fn => {
+        unlisten = fn;
+      });
+    });
+    return () => { unlisten?.(); };
+  }
+  return () => {};
+}
+

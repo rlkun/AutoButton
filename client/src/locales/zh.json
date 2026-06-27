@@ -16,6 +16,7 @@
   },
   "globalControl": {
     "title": "全局开关",
+    "hotkeyLabel": "快捷键",
     "statusRunning": "● 运行中",
     "statusStandby": "○ 已暂停",
     "targetLabelDefault": "目标: 不选择 (前台激活)",
