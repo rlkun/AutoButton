@@ -395,7 +395,8 @@ fn toggle_window_pin(app_handle: tauri::AppHandle) -> PinResult {
     }
 }
 
-static HOTKEY_THREAD_ID: Mutex<Option<u32>> = Mutex::new(None);
+use std::sync::atomic::{AtomicU32, Ordering};
+static HOTKEY_VERSION: AtomicU32 = AtomicU32::new(0);
 
 fn parse_trigger_key(key: &str) -> u32 {
     let lower = key.to_lowercase();
@@ -442,39 +443,31 @@ fn parse_trigger_key(key: &str) -> u32 {
     }
 }
 
-fn parse_hotkey_string(hotkey: &str) -> (u32, u32) {
+fn parse_hotkey_for_polling(hotkey: &str) -> (bool, bool, bool, u32) {
     let parts: Vec<&str> = hotkey.split('+').collect();
-    let mut modifiers = 0u32;
+    let mut ctrl = false;
+    let mut alt = false;
+    let mut shift = false;
     let mut vk = 0u32;
 
     for part in parts {
         let clean = part.trim().to_lowercase();
         match clean.as_str() {
-            "ctrl" | "control" => modifiers |= 0x0002, // MOD_CONTROL
-            "alt" => modifiers |= 0x0001,              // MOD_ALT
-            "shift" => modifiers |= 0x0004,            // MOD_SHIFT
+            "ctrl" | "control" => ctrl = true,
+            "alt" => alt = true,
+            "shift" => shift = true,
             other => {
                 vk = parse_trigger_key(other);
             }
         }
     }
-    (modifiers, vk)
+    (ctrl, alt, shift, vk)
 }
 
 #[tauri::command]
 fn register_global_hotkey(hotkey: String, app_handle: tauri::AppHandle) -> OpResult {
-    let mut thread_id_lock = HOTKEY_THREAD_ID.lock().unwrap();
-    if let Some(old_tid) = *thread_id_lock {
-        unsafe {
-            let _ = windows::Win32::UI::WindowsAndMessaging::PostThreadMessageW(
-                old_tid,
-                windows::Win32::UI::WindowsAndMessaging::WM_QUIT,
-                windows::Win32::Foundation::WPARAM(0),
-                windows::Win32::Foundation::LPARAM(0),
-            );
-        }
-        *thread_id_lock = None;
-    }
+    // 递增版本号，通知先前的旧轮询线程自动安全退出
+    let current_version = HOTKEY_VERSION.fetch_add(1, Ordering::SeqCst) + 1;
 
     if hotkey.is_empty() {
         return OpResult { success: true };
@@ -484,46 +477,66 @@ fn register_global_hotkey(hotkey: String, app_handle: tauri::AppHandle) -> OpRes
     let hotkey_str = hotkey.clone();
 
     std::thread::spawn(move || {
-        let (modifiers, vk) = parse_hotkey_string(&hotkey_str);
+        let (ctrl_required, alt_required, shift_required, vk) = parse_hotkey_for_polling(&hotkey_str);
         if vk == 0 {
             log::warn!("[热键] 无法解析的全局快捷键: {}", hotkey_str);
             return;
         }
 
-        let tid = unsafe { windows::Win32::System::Threading::GetCurrentThreadId() };
-        {
-            let mut lock = HOTKEY_THREAD_ID.lock().unwrap();
-            *lock = Some(tid);
-        }
+        log::info!(
+            "[热键] 全局快捷键轮询线程启动: {} (vk: {}, ctrl: {}, alt: {}, shift: {}, 线程版本: {})",
+            hotkey_str, vk, ctrl_required, alt_required, shift_required, current_version
+        );
 
-        unsafe {
-            let reg_res = windows::Win32::UI::Input::KeyboardAndMouse::RegisterHotKey(
-                None,
-                1001,
-                windows::Win32::UI::Input::KeyboardAndMouse::HOT_KEY_MODIFIERS(modifiers),
-                vk,
-            );
+        let mut was_pressed = unsafe {
+            use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
+            let ctrl_down = GetAsyncKeyState(0x11) < 0;
+            let alt_down = GetAsyncKeyState(0x12) < 0;
+            let shift_down = GetAsyncKeyState(0x10) < 0;
+            let vk_down = GetAsyncKeyState(vk as i32) < 0;
 
-            if reg_res.is_err() {
-                log::error!("[热键] 注册全局快捷键失败: {:?}", reg_res);
-                return;
+            let modifiers_match = (ctrl_down == ctrl_required)
+                && (alt_down == alt_required)
+                && (shift_down == shift_required);
+
+            vk_down && modifiers_match
+        };
+
+        loop {
+            // 如果全局版本号发生了改变，说明有新的热键绑定，此线程已过期，必须安全自毁退出
+            if HOTKEY_VERSION.load(Ordering::SeqCst) != current_version {
+                break;
             }
 
-            log::info!("[热键] 全局快捷键注册成功: {} (modifiers: {}, vk: {})", hotkey_str, modifiers, vk);
+            unsafe {
+                use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
 
-            let mut msg = windows::Win32::UI::WindowsAndMessaging::MSG::default();
-            while windows::Win32::UI::WindowsAndMessaging::GetMessageW(&mut msg, None, 0, 0).as_bool() {
-                if msg.message == windows::Win32::UI::WindowsAndMessaging::WM_HOTKEY {
-                    if msg.wParam.0 == 1001 {
-                        log::info!("[热键] 全局热键被触发，投递前端事件...");
+                // 0x11: VK_CONTROL, 0x12: VK_MENU (ALT), 0x10: VK_SHIFT
+                // GetAsyncKeyState 返回值的最高有效位（第15位）如果为 1，说明按键当前处于按下状态
+                let ctrl_down = GetAsyncKeyState(0x11) < 0;
+                let alt_down = GetAsyncKeyState(0x12) < 0;
+                let shift_down = GetAsyncKeyState(0x10) < 0;
+                let vk_down = GetAsyncKeyState(vk as i32) < 0;
+
+                let modifiers_match = (ctrl_down == ctrl_required)
+                    && (alt_down == alt_required)
+                    && (shift_down == shift_required);
+
+                if vk_down && modifiers_match {
+                    if !was_pressed {
+                        log::info!("[热键] 全局热键被触发 (GetAsyncKeyState)，发送通知给前端...");
                         let _ = app_h.emit("global-hotkey-triggered", ());
+                        was_pressed = true;
                     }
+                } else {
+                    was_pressed = false;
                 }
             }
 
-            let _ = windows::Win32::UI::Input::KeyboardAndMouse::UnregisterHotKey(None, 1001);
-            log::info!("[热键] 全局快捷键已安全注销。");
+            std::thread::sleep(std::time::Duration::from_millis(30));
         }
+
+        log::info!("[热键] 全局快捷键轮询线程（版本: {}）已安全退出。", current_version);
     });
 
     OpResult { success: true }
